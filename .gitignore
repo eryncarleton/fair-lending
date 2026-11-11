@@ -1,0 +1,8 @@
+# Raw HMDA downloads are large - keep them out of git
+data/*
+!data/.gitkeep
+
+__pycache__/
+*.pyc
+.venv/
+.streamlit/secrets.toml

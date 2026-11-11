@@ -1,0 +1,40 @@
+{
+  "name": "fair-lending",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+
+  // 8501 = Streamlit app, db:5432 = PostgreSQL (for DBeaver, pgAdmin, etc. on Windows)
+  "forwardPorts": [8501, "db:5432"],
+  "portsAttributes": {
+    "8501": { "label": "Streamlit app", "onAutoForward": "openBrowser" },
+    "db:5432": { "label": "PostgreSQL" }
+  },
+
+  // The base image ships a Yarn apt source with an expired key, which breaks apt-get update; we don't need Yarn.
+  "postCreateCommand": "sudo rm -f /etc/apt/sources.list.d/yarn.list && sudo apt-get update &&sudo apt-get install -y --no-install-recommends postgresql-client && pip install --user -r requirements.txt",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg"
+      ],
+      "settings": {
+        "sqltools.connections": [
+          {
+            "name": "HMDA (Postgres)",
+            "driver": "PostgreSQL",
+            "server": "db",
+            "port": 5432,
+            "database": "hmda",
+            "username": "hmda",
+            "password": "hmda"
+          }
+        ]
+      }
+    }
+  }
+}

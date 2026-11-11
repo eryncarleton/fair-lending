@@ -1,0 +1,34 @@
+# Two containers:
+#   app - Python environment where you run the loader script and the Streamlit app
+#   db  - PostgreSQL database that stores the HMDA data
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/python:1-3.12-bookworm
+    volumes:
+      - ..:/workspace:cached
+    # Keep the container running so VS Code can attach to it.
+    command: sleep infinity
+    environment:
+      DATABASE_URL: postgresql://hmda:hmda@db:5432/hmda
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hmda
+      POSTGRES_PASSWORD: hmda
+      POSTGRES_DB: hmda
+    volumes:
+      # Data lives in a named volume, so it survives container rebuilds.
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hmda -d hmda"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
