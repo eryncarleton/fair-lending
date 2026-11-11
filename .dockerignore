@@ -1,0 +1,7 @@
+# The image only needs requirements.txt; the code is mounted at run time.
+# Keeping data/ out matters most: the HMDA and census files are several GB.
+data/
+.git/
+.venv/
+__pycache__/
+*.pyc

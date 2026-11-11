@@ -1,0 +1,49 @@
+# One Compose project shared by all three ways of running the app:
+#
+#   Docker only:          docker compose up -d          -> db + app (Streamlit on localhost:8501)
+#   WSL local:            docker compose up -d db       -> just Postgres; run Python from your WSL venv
+#   VS Code dev container .devcontainer/ adds a `dev` service on top of this file
+#
+# Because they are one project, there is only ever one Postgres container using the data volume.
+name: fair-lending
+
+services:
+  db:
+    image: postgres:16
+    # A fixed name means a second copy can never start against the same data volume.
+    container_name: fair-lending-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hmda
+      POSTGRES_PASSWORD: hmda
+      POSTGRES_DB: hmda
+    ports:
+      # Reachable from WSL and Windows tools (DBeaver, pgAdmin, Excel) as localhost:5432.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hmda -d hmda"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      # APP_PORT=8502 docker compose up -d   -> if 8501 is busy (e.g. VS Code is forwarding it)
+      - "127.0.0.1:${APP_PORT:-8501}:8501"
+    volumes:
+      - .:/workspace
+    environment:
+      DATABASE_URL: postgresql://hmda:hmda@db:5432/hmda
+      # Bind mounts from the Windows drive don't deliver file-change events, so poll for edits.
+      STREAMLIT_SERVER_FILE_WATCHER_TYPE: poll
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+    # Keeps the volume the original dev container created, so already-loaded data is reused.
+    name: fair-lending_devcontainer_pgdata

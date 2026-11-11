@@ -1,19 +1,22 @@
 {
   "name": "fair-lending",
-  "dockerComposeFile": "docker-compose.yaml",
-  "service": "app",
+  // The shared Compose file at the project root (Postgres) plus the dev container on top.
+  "dockerComposeFile": ["../docker-compose.yaml", "docker-compose.yaml"],
+  "service": "dev",
+  // Start only Postgres and the dev container, not the Docker-only `app` service.
+  "runServices": ["db", "dev"],
   "workspaceFolder": "/workspace",
-  "shutdownAction": "stopCompose",
+  // Leave Postgres running when VS Code closes: WSL-local mode may be using it.
+  "shutdownAction": "none",
 
-  // 8501 = Streamlit app, db:5432 = PostgreSQL (for DBeaver, pgAdmin, etc. on Windows)
-  "forwardPorts": [8501, "db:5432"],
+  // 8501 = Streamlit app. Postgres is already published on localhost:5432 by ../docker-compose.yaml.
+  "forwardPorts": [8501],
   "portsAttributes": {
-    "8501": { "label": "Streamlit app", "onAutoForward": "openBrowser" },
-    "db:5432": { "label": "PostgreSQL" }
+    "8501": { "label": "Streamlit app", "onAutoForward": "openBrowser" }
   },
 
   // The base image ships a Yarn apt source with an expired key, which breaks apt-get update; we don't need Yarn.
-  "postCreateCommand": "sudo rm -f /etc/apt/sources.list.d/yarn.list && sudo apt-get update &&sudo apt-get install -y --no-install-recommends postgresql-client && pip install --user -r requirements.txt",
+  "postCreateCommand": "sudo rm -f /etc/apt/sources.list.d/yarn.list && sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client && pip install --user -r requirements.txt",
 
   "customizations": {
     "vscode": {

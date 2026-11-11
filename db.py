@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, text
 
 @st.cache_resource
 def get_engine():
-    url = os.environ["DATABASE_URL"].replace("postgresql://", "postgresql+psycopg://", 1)
+    url = os.environ.get("DATABASE_URL", "postgresql://hmda:hmda@localhost:5432/hmda").replace("postgresql://", "postgresql+psycopg://", 1)
     return create_engine(url)
 
 
