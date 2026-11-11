@@ -8,6 +8,11 @@ auto-discover and list as extra sidebar entries).
 
 import streamlit as st
 
+import auth
+
+# Runs before any page: on the hosted site, nothing loads until the password is entered.
+auth.require_password()
+
 st.navigation(
     [
         st.Page("app_pages/0_Lender_analysis.py", title="Lender analysis", default=True),

@@ -1,0 +1,6 @@
+# Cloud Build recipe used by deploy/cloudrun.sh: build the hosted image and store it in Artifact Registry.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]   # BuildKit reads deploy/Dockerfile.cloudrun.dockerignore
+    args: ["build", "-f", "deploy/Dockerfile.cloudrun", "-t", "${_IMAGE}", "."]
+images: ["${_IMAGE}"]

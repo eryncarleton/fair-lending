@@ -1,0 +1,28 @@
+# Image for the hosted app on Cloud Run: the code plus the data file, nothing else.
+# Built by deploy/cloudrun.sh (through Cloud Build). The data file comes from
+# scripts/export_duckdb.py; there is no database server and no secret in this image.
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/tmp
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY *.py ./
+COPY app_pages ./app_pages
+COPY build/hmda.duckdb /data/hmda.duckdb
+
+# FAIR_LENDING_REQUIRE_PASSWORD: show nothing if the password hash (a Secret Manager secret) is missing.
+ENV FAIR_LENDING_DUCKDB=/data/hmda.duckdb \
+    FAIR_LENDING_REQUIRE_PASSWORD=1 \
+    STREAMLIT_SERVER_HEADLESS=true \
+    STREAMLIT_SERVER_FILE_WATCHER_TYPE=none \
+    STREAMLIT_CLIENT_TOOLBAR_MODE=viewer \
+    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+
+# Unprivileged user; the data file is read-only to it.
+USER 65534:65534
+
+# Cloud Run sets PORT (8080).
+CMD exec streamlit run app.py --server.port="${PORT:-8080}" --server.address=0.0.0.0

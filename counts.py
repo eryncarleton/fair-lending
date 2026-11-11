@@ -1,6 +1,7 @@
 """Precomputed table `lender_msa_counts`: one row per lender x MSA x product x loan type.
 
-Every number the Streamlit pages need comes from this table, so they load in well under a second
+Every number the Streamlit pages need comes from this table (plus msa_states and the explorer_*
+summary tables below), so they load in well under a second
 instead of re-aggregating ~1.2M HMDA records through three views each time.
 
 Columns:
@@ -72,21 +73,61 @@ STATES_SQL = """
 """
 
 
+# Data explorer summaries, for every year x state x loan purpose, plus "All" for state and/or purpose
+# (CUBE). Precomputing every combination keeps medians exact: they can't be added up afterwards.
+# NULL loan purposes stay NULL (they count toward "All" but aren't offered as a filter).
+_CUBE_KEYS = """activity_year,
+       CASE WHEN grouping(state_code) = 1 THEN 'All' ELSE state_code END     AS state_code,
+       CASE WHEN grouping(loan_purpose) = 1 THEN 'All' ELSE loan_purpose END AS loan_purpose"""
+EXPLORER_DIMS = ["derived_race", "derived_ethnicity", "derived_sex", "applicant_age"]
+EXPLORER_SQL = {
+    "explorer_totals": f"""
+        SELECT {_CUBE_KEYS},
+               count(*)                              AS records,
+               count(*) FILTER (WHERE is_decision)   AS decisions,
+               count(*) FILTER (WHERE is_denied)     AS denied
+        FROM hmda_clean
+        GROUP BY activity_year, CUBE (state_code, loan_purpose)""",
+    "explorer_groups": "\n        UNION ALL\n".join(f"""
+        SELECT {_CUBE_KEYS},
+               '{dim}'                               AS dim,
+               {dim}                                 AS grp,
+               count(*) FILTER (WHERE is_decision)   AS decisions,
+               count(*) FILTER (WHERE is_denied)     AS denied,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY income) AS median_income
+        FROM hmda_clean
+        GROUP BY activity_year, {dim}, CUBE (state_code, loan_purpose)""" for dim in EXPLORER_DIMS),
+    "explorer_reasons": f"""
+        SELECT {_CUBE_KEYS},
+               denial_reason_1                       AS reason,
+               count(*)                              AS denials
+        FROM hmda_clean
+        WHERE is_denied
+        GROUP BY activity_year, denial_reason_1, CUBE (state_code, loan_purpose)""",
+}
+
+# Every precomputed table, in the order the hosted export copies them.
+PRECOMPUTED = [TABLE, STATES_TABLE, *EXPLORER_SQL]
+
+
 def version() -> str:
-    return "v:" + hashlib.sha1((_select_sql() + STATES_SQL).encode()).hexdigest()[:12]
+    defs = _select_sql() + STATES_SQL + "".join(EXPLORER_SQL.values())
+    return "v:" + hashlib.sha1(defs.encode()).hexdigest()[:12]
 
 
 def statements() -> list[str]:
-    return [
+    stmts = [
         f"DROP TABLE IF EXISTS {TABLE}",
         f"CREATE TABLE {TABLE} AS {_select_sql()}",
         f"CREATE INDEX ON {TABLE} (msa_md, product)",
         f"CREATE INDEX ON {TABLE} (lei)",
         f"DROP TABLE IF EXISTS {STATES_TABLE}",
         f"CREATE TABLE {STATES_TABLE} AS {STATES_SQL}",
-        # Written last, so an interrupted build is never mistaken for a current one.
-        f"COMMENT ON TABLE {TABLE} IS '{version()}'",
     ]
+    for name, sql in EXPLORER_SQL.items():
+        stmts += [f"DROP TABLE IF EXISTS {name}", f"CREATE TABLE {name} AS {sql}"]
+    # Written last, so an interrupted build is never mistaken for a current one.
+    return stmts + [f"COMMENT ON TABLE {TABLE} IS '{version()}'"]
 
 
 # `execute` is any function that runs one SQL string and returns something with .fetchone():

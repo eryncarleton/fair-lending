@@ -1,0 +1,7 @@
+# Build context for deploy/Dockerfile.cloudrun: only what the image copies.
+*
+!requirements.txt
+!*.py
+!app_pages/
+!build/hmda.duckdb
+**/__pycache__

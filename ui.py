@@ -8,7 +8,7 @@ import streamlit as st
 import counts
 import disparity as dp
 import redlining as rl
-from db import get_engine, query
+import data
 
 SETTING_KEYS = ["tract_type", "product", "loan_types", "depository_only", "peers_all", "alpha"]
 DEFAULT_PRODUCT = "Mortgage + HELOC combined"
@@ -92,17 +92,9 @@ def sidebar() -> Settings:
     return Settings(tract_type, product, tuple(loan_types), depository_only, peers_all, alpha)
 
 
-@st.cache_data(ttl=600, show_spinner="Loading lender counts…")
 def load_counts() -> pd.DataFrame:
-    """The precomputed lender x MSA x product table, (re)built first if missing or out of date."""
-    with get_engine().begin() as conn:
-        if not counts.source_ready(conn.exec_driver_sql):
-            st.warning("Census data isn't loaded yet. Run `python scripts/load_census.py data/CensusFlatFile2025.csv`.")
-            st.stop()
-        if not counts.is_current(conn.exec_driver_sql):
-            with st.spinner("Building the lender summary table (one time, about 15 seconds)…"):
-                counts.build(conn.exec_driver_sql)
-    return query(f"SELECT * FROM {counts.TABLE}")
+    """The precomputed lender x MSA x product x loan type table (see counts.py and data.py)."""
+    return data.table(counts.TABLE)
 
 
 @st.cache_data(ttl=600)
@@ -144,10 +136,8 @@ def msa_mix(msa: str, by: str) -> pd.DataFrame:
     return rl.mix(c[c["msa_md"] == msa], by)
 
 
-@st.cache_data(ttl=600)
 def msa_states() -> pd.DataFrame:
-    load_counts()  # makes sure the table exists and is current
-    return query(f"SELECT msa_md, state_code FROM {counts.STATES_TABLE}")
+    return data.table(counts.STATES_TABLE)
 
 
 @st.cache_data(ttl=600, show_spinner="Testing denial disparities…")
