@@ -38,12 +38,33 @@ fi
 if ! gcloud iam service-accounts describe "$SA" >/dev/null 2>&1; then
     gcloud iam service-accounts create "$SERVICE-run" --display-name "fair-lending Cloud Run app"
 fi
-gcloud secrets add-iam-policy-binding "$SECRET" --member "serviceAccount:$SA" \
-    --role roles/secretmanager.secretAccessor --condition None >/dev/null
+
+# has_binding <member> <role> <get-iam-policy command words...>: read-only permission check.
+has_binding() {
+    local member="$1" role="$2"; shift 2
+    "$@" --flatten "bindings[].members" --filter "bindings.members:$member" \
+        --format "value(bindings.role)" 2>/dev/null | tr -d '\r' | grep -qx "$role"
+}
+
+# Lets the app read the password hash (a grant on this one secret only). Done on the first deploy.
+if ! has_binding "serviceAccount:$SA" roles/secretmanager.secretAccessor gcloud secrets get-iam-policy "$SECRET"; then
+    gcloud secrets add-iam-policy-binding "$SECRET" --member "serviceAccount:$SA" \
+        --role roles/secretmanager.secretAccessor --condition None >/dev/null
+fi
 
 TAG="$(git rev-parse --short HEAD)$([[ -n "$(git status --porcelain)" ]] && echo -modified)-$(date +%Y%m%d-%H%M%S)"
 IMAGE="$REGION-docker.pkg.dev/$PROJECT/$REPO/app:$TAG"
 echo "Project $PROJECT, service $SERVICE in $REGION, image tag $TAG"
+
+# New projects run Cloud Build as the Compute Engine default service account without the permissions
+# a build needs (reading the uploaded source, pushing the image, writing logs). Google's fix is one
+# project-wide role grant; the script only checks for it, and you grant it once yourself.
+BUILD_SA="$(gcloud projects describe "$PROJECT" --format 'value(projectNumber)')-compute@developer.gserviceaccount.com"
+if ! has_binding "serviceAccount:$BUILD_SA" roles/cloudbuild.builds.builder gcloud projects get-iam-policy "$PROJECT"; then
+    echo "Cloud Build needs one permission first. Run this once, then deploy again:"
+    echo "  gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:$BUILD_SA --role roles/cloudbuild.builds.builder --condition None"
+    exit 1
+fi
 
 gcloud artifacts repositories describe "$REPO" --location "$REGION" >/dev/null 2>&1 \
     || gcloud artifacts repositories create "$REPO" --repository-format docker --location "$REGION"
