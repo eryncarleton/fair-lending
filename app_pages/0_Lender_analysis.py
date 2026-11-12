@@ -12,8 +12,10 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+import data
 import disparity as dp
 import redlining as rl
+import tractmap as tm
 import ui
 from db import require_data
 
@@ -131,6 +133,23 @@ if st.session_state.get(msa_key) not in msa_names:  # e.g. new settings: this MS
 msa = st.selectbox("MSA to compare with peers", mine["msa_md"].tolist(), format_func=msa_names.__getitem__,
                    key=msa_key)
 r = mine[mine["msa_md"] == msa].iloc[0]
+
+# --- Map: the lender's applications across the MSA's tracts of the chosen type -------------
+st.subheader(f"Applications by tract in {r.msa_name}")
+if not data.has_tract_shapes():
+    st.info("No tract boundaries loaded, so there's no map. Run `python scripts/load_tracts.py`.")
+else:
+    tracts = tm.classify(data.msa_tracts(msa), data.lender_tract_apps(lei, msa),
+                         s.tract_type, s.product, s.loan_types)
+    in_type = tracts[tracts["in_type"] & (tracts["category"] != "water")]
+    st.caption(
+        f"{s.tt_label} tracts ({s.tract_type}) shaded by how many of the lender's {rl.PRODUCT_PHRASE[s.product]} "
+        f"applications came from each: {int((in_type['apps'] == 0).sum()):,} of {len(in_type):,} had none. "
+        f"Tracts at least {tm.WATER_PCT}% water are blue. Hover over a tract for its figures."
+    )
+    st.pydeck_chart(tm.deck(tracts, s.tract_type), height=560)
+    st.html(tm.legend_html(tracts, s.tract_type))
+
 peers = ui.peers_of(s, lei, msa, r.target_apps)
 own = own_counts[own_counts["msa_md"] == msa]
 
@@ -222,11 +241,11 @@ def mix_shares(by: str) -> pd.DataFrame:
 left, right = st.columns(2)
 for col, by, title in [(left, "product", "Product"), (right, "loan_type", "Loan type")]:
     with col:
-        data = mix_shares(by)
+        shares = mix_shares(by)
         st.caption(title)
-        chart = alt.Chart(data).mark_bar().encode(
+        chart = alt.Chart(shares).mark_bar().encode(
             x=alt.X("share:Q", title="Share of applications", axis=alt.Axis(format="%"), scale=alt.Scale(domain=[0, 1])),
-            y=alt.Y("category:N", title=None, sort=list(dict.fromkeys(data["category"])),
+            y=alt.Y("category:N", title=None, sort=list(dict.fromkeys(shares["category"])),
                     axis=alt.Axis(labelLimit=220)),
             yOffset=alt.YOffset("who:N", sort=[info.respondent_name, compare_label]),
             color=alt.Color("who:N", title=None, legend=alt.Legend(orient="bottom", labelLimit=400),
@@ -234,7 +253,7 @@ for col, by, title in [(left, "product", "Product"), (right, "loan_type", "Loan 
                                             range=["#2563eb", "#94a3b8"])),
             tooltip=[alt.Tooltip("who:N", title="Lender"), alt.Tooltip("category:N", title=title),
                      alt.Tooltip("share:Q", title="Share", format=".1%")],
-        ).properties(height=70 + 50 * data["category"].nunique())
+        ).properties(height=70 + 50 * shares["category"].nunique())
         st.altair_chart(chart, use_container_width=True)
 st.caption(
     "Shares of all the lender's applications in this MSA, whatever the product and loan-type settings in the "
