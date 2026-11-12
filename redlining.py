@@ -36,44 +36,51 @@ PRODUCTS = {
 
 BELOW = "Below peers - significant"
 
-# Lender x MSA x product application counts, with the number in each tract type.
-# Excluded: purchased loans (action 6), records without census tract data, non-MSA records,
-# and records whose open-end flag is "Exempt".
-COUNTS_SQL = f"""
-    SELECT h.lei,
-           coalesce(h.respondent_name, h.lei)                    AS respondent_name,
-           coalesce(h.is_depository, false)                      AS is_depository,
-           h.msa_md,
-           coalesce(n.msa_md_name, h.msa_md)                     AS msa_name,
-           h.product,
-           count(*)                                              AS apps,
-           {", ".join(
-               f"count(*) FILTER (WHERE h.{col} >= :threshold) AS {code.lower()}_apps"
-               for code, (_, _, col) in TRACT_TYPES.items()
-           )}
-    FROM hmda_with_census h
-    LEFT JOIN msa_md_names n USING (msa_md)
-    WHERE h.action_taken <> '6'
-      AND h.tract_minority_pct IS NOT NULL
-      AND h.tract_black_hispanic_pct IS NOT NULL
-      AND h.msa_md <> '99999'
-      AND h.product IS NOT NULL
-    GROUP BY 1, 2, 3, 4, 5, 6
-"""
+# The lender x MSA x product counts these tests run on are precomputed in table
+# lender_msa_counts (see counts.py). Applications counted there for this test exclude purchased
+# loans (action 6), records without census tract data, non-MSA records, and "Exempt" open-end flags.
 
 
-def combine_products(counts: pd.DataFrame, product: str, tract_type: str) -> pd.DataFrame:
-    """Keep the chosen product(s), add them up per lender and MSA, and pick the tract type.
+LOAN_TYPES = ["Conventional", "FHA", "VA", "USDA / RHS"]
+# For running text: "31 peers: lenders with ... mortgage and HELOC applications"
+PRODUCT_PHRASE = {
+    "Mortgage (closed-end)": "mortgage",
+    "HELOC (open-end)": "HELOC",
+    "Mortgage + HELOC combined": "mortgage and HELOC",
+}
+KEYS = ["lei", "respondent_name", "is_depository", "msa_md", "msa_name"]
 
-    Returns columns apps (all applications) and tt_apps (applications in the chosen tract type).
+
+def combine_products(counts: pd.DataFrame, product: str, tract_type: str,
+                     loan_types: tuple[str, ...] = tuple(LOAN_TYPES)) -> pd.DataFrame:
+    """Keep the chosen product(s) and loan types, add them up per lender and MSA, and pick the tract type.
+
+    Returns columns apps (applications with tract data), tt_apps (applications in the chosen
+    tract type), total_apps, and the applicant-group decision/denial counts used by disparity.py.
     """
-    keep = counts[counts["product"].isin(PRODUCTS[product])]
-    keys = ["lei", "respondent_name", "is_depository", "msa_md", "msa_name"]
+    from disparity import count_columns  # here, not at the top: disparity imports this module
+
+    keep = counts[counts["product"].isin(PRODUCTS[product]) & counts["loan_type"].isin(loan_types)]
     col = f"{tract_type.lower()}_apps"
     return (
-        keep.groupby(keys, as_index=False)[["apps", col]].sum()
+        keep.groupby(KEYS, as_index=False)[["total_apps", "apps", col, *count_columns()]].sum()
         .rename(columns={col: "tt_apps"})
     )
+
+
+def mix(counts: pd.DataFrame, by: str) -> pd.DataFrame:
+    """Each lender's application counts by `by` ("product" or "loan_type"): one row per lender.
+
+    counts: rows of the counts table (already narrowed to one MSA). Uses every application,
+    whatever the product / loan-type settings, so the mix shows the lender's whole business there.
+    """
+    return counts.pivot_table(index="lei", columns=by, values="total_apps", aggfunc="sum", fill_value=0)
+
+
+def median_peer_share(peers: pd.DataFrame) -> float | None:
+    """Tract-type share of the hypothetical median peer: the median of the peers' own shares."""
+    shares = peers["tt_apps"] / peers["apps"]
+    return float(shares.median()) if len(shares) else None
 
 
 def chi_square_2x2(a: int, b: int, c: int, d: int) -> dict:
@@ -129,6 +136,7 @@ def peer_tests(
                 "peer_apps": p_apps,
                 "peer_tt_apps": p_tt,
                 "peer_share": p_tt / p_apps if p_apps else None,
+                "median_peer_share": median_peer_share(peers),
             }
             if p_apps == 0:
                 row.update(statistic=None, p_value=None, method="No peers in range")

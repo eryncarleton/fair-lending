@@ -1,11 +1,14 @@
-# Two containers:
-#   app - Python environment where you run the loader script and the Streamlit app
-#   db  - PostgreSQL database that stores the HMDA data
+# Adds the VS Code dev container on top of ../docker-compose.yaml (devcontainer.json loads both).
+# Postgres (`db`) comes from that file, so the dev container, Docker-only mode and WSL-local mode
+# all share one database.
+#
+# Note: Compose resolves relative paths from the FIRST file's folder (the project root),
+# so "." below is the project root, not .devcontainer/.
 services:
-  app:
+  dev:
     image: mcr.microsoft.com/devcontainers/python:1-3.12-bookworm
     volumes:
-      - ..:/workspace:cached
+      - .:/workspace:cached
     # Keep the container running so VS Code can attach to it.
     command: sleep infinity
     environment:
@@ -13,22 +16,3 @@ services:
     depends_on:
       db:
         condition: service_healthy
-
-  db:
-    image: postgres:16
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: hmda
-      POSTGRES_PASSWORD: hmda
-      POSTGRES_DB: hmda
-    volumes:
-      # Data lives in a named volume, so it survives container rebuilds.
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hmda -d hmda"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-volumes:
-  pgdata:

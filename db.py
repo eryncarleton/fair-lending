@@ -6,10 +6,12 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
 
+import data
+
 
 @st.cache_resource
 def get_engine():
-    url = os.environ["DATABASE_URL"].replace("postgresql://", "postgresql+psycopg://", 1)
+    url = os.environ.get("DATABASE_URL", "postgresql://hmda:hmda@localhost:5432/hmda").replace("postgresql://", "postgresql+psycopg://", 1)
     return create_engine(url)
 
 
@@ -21,7 +23,7 @@ def query(sql: str, **params) -> pd.DataFrame:
 
 def require_data() -> None:
     """Stop the page with a message if HMDA data hasn't been loaded yet."""
-    if not query("SELECT to_regclass('hmda_clean') IS NOT NULL AS ok")["ok"].iloc[0]:
+    if not data.has_data():
         st.warning(
             "No HMDA data loaded yet. Put a CSV in the `data/` folder and run:\n\n"
             "`python scripts/load_hmda.py data/<your_file>.csv`"

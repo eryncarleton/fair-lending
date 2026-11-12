@@ -6,3 +6,7 @@ __pycache__/
 *.pyc
 .venv/
 .streamlit/secrets.toml
+
+
+# Hosted data file, built by scripts/export_duckdb.py
+build/

@@ -23,6 +23,8 @@ from pathlib import Path
 import psycopg
 from psycopg import sql
 
+from build_counts import rebuild as rebuild_counts
+
 TABLE = "ffiec_census_raw"
 VIEWS_SQL = Path(__file__).resolve().parent.parent / "db" / "census_views.sql"
 
@@ -52,7 +54,7 @@ def main() -> None:
         w.writerow([row[2] + row[3] + row[4], *row])
     buf.seek(0)
 
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+    with psycopg.connect(os.environ.get("DATABASE_URL", "postgresql://hmda:hmda@localhost:5432/hmda")) as conn:
         conn.execute(sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(sql.Identifier(TABLE)))
         conn.execute(
             sql.SQL("CREATE TABLE {} (census_tract TEXT PRIMARY KEY, {})").format(
@@ -67,6 +69,7 @@ def main() -> None:
         conn.commit()
         n = conn.execute(f"SELECT count(*) FROM {TABLE}").fetchone()[0]
         print(f"Done. {TABLE} has {n:,} tracts; views ffiec_census_tract and hmda_with_census created.")
+        rebuild_counts(conn)
 
 
 if __name__ == "__main__":

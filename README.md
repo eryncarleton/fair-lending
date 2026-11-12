@@ -1,6 +1,7 @@
 # fair-lending
 
-Analyze HMDA (Home Mortgage Disclosure Act) loan data with PostgreSQL and a Streamlit app, all running in Docker.
+Analyze HMDA (Home Mortgage Disclosure Act) loan data with PostgreSQL and a Streamlit app.
+Run it fully in Docker, or run the Python side directly in WSL.
 
 ```
 ┌──────────── Docker ─────────────┐
@@ -11,14 +12,66 @@ Analyze HMDA (Home Mortgage Disclosure Act) loan data with PostgreSQL and a Stre
    localhost:8501 → Streamlit     localhost:5432 → Postgres
 ```
 
-## One-time setup
+## Environments
 
-1. Install **Docker Desktop** and in its settings turn on *Use the WSL 2 based engine*
-   (Settings → Resources → WSL integration → enable your distro).
-2. Install **VS Code** and the **Dev Containers** extension.
-3. Open this folder in VS Code (from WSL: `code .` in the project folder).
-4. When prompted, click **Reopen in Container** (or Command Palette → *Dev Containers: Reopen in Container*).
+There are three ways to run the project. All of them share one Compose project (`docker-compose.yaml`,
+named `fair-lending`) and one Postgres data volume, so data you load in one is there in the others.
+
+| | Python runs in | Postgres | Start with |
+|---|---|---|---|
+| **Docker** | `app` container | `db` container | `docker compose up -d` |
+| **WSL local** | WSL venv (`~/.venvs/fair-lending`) | `db` container, or Postgres installed in WSL | `docker compose up -d db`, then `streamlit run app.py` |
+| **VS Code dev container** | `dev` container | `db` container | *Reopen in Container* |
+
+Every mode serves the app on <http://localhost:8501> and Postgres on `localhost:5432`
+(user, password and database all `hmda`). Run one app at a time: they all want port 8501.
+
+First, for all modes: install **Docker Desktop** and turn on its WSL integration
+(Settings → Resources → WSL integration → enable your distro). Run the commands below from a WSL terminal
+in the project folder (`cd /mnt/c/Users/<you>/Projects/fair-lending`).
+
+### Docker
+
+```bash
+docker compose up -d          # builds the app image the first time
+docker compose logs -f app    # watch Streamlit start; Ctrl+C stops watching, not the app
+```
+
+Run the loader scripts inside the container, e.g. `docker compose exec app python scripts/load_hmda.py data/your_file.csv`.
+If port 8501 is busy (VS Code forwards it while the dev container is open), pick another: `APP_PORT=8510 docker compose up -d`.
+Code edits apply without a rebuild (the folder is mounted). After changing `requirements.txt`: `docker compose up -d --build`.
+Stop with `docker compose stop`.
+
+### WSL local
+
+One-time setup (creates the venv and installs the Python packages; Ubuntu's Python is fine):
+
+```bash
+bash scripts/setup_wsl.sh
+```
+
+Then, in each new terminal:
+
+```bash
+docker compose up -d db
+source ~/.venvs/fair-lending/bin/activate
+streamlit run app.py
+```
+
+Scripts and the app connect to `localhost:5432` when `DATABASE_URL` isn't set, so the loader commands below work as written.
+
+**No Docker at all:** `bash scripts/setup_wsl.sh --native-db` also installs Postgres inside WSL, on port **5433**
+so it can't clash with the Docker database, and sets `DATABASE_URL` in the venv's activate script.
+That database starts empty: load the data with the commands in the next section.
+
+### VS Code dev container
+
+1. Install **VS Code** and the **Dev Containers** extension.
+2. Open this folder in VS Code (from WSL: `code .` in the project folder).
+3. When prompted, click **Reopen in Container** (or Command Palette → *Dev Containers: Reopen in Container*).
    The first build takes a few minutes. It starts Postgres and installs the Python packages.
+
+Postgres keeps running when you close VS Code (so WSL-local mode can still use it). Stop it with `docker compose stop`.
 
 ## Load HMDA data
 
@@ -26,7 +79,8 @@ Analyze HMDA (Home Mortgage Disclosure Act) loan data with PostgreSQL and a Stre
    Pick a year and a state (or a few lenders) and download the CSV.
    Start with one state; the nationwide file is tens of millions of rows.
 2. Save the CSV into the `data/` folder of this project.
-3. In the VS Code terminal (which runs inside the container):
+3. In the VS Code terminal (dev container) or your activated WSL venv
+   (Docker mode: prefix with `docker compose exec app`):
 
    ```bash
    python scripts/load_hmda.py data/your_file.csv
@@ -92,14 +146,22 @@ Every HMDA record with a census tract matches a census row. The 13,824 records w
 streamlit run app.py
 ```
 
-VS Code opens <http://localhost:8501>. Edit a page and save, and the page offers to rerun.
+(In Docker mode it's already running.) Open <http://localhost:8501>. Edit a page and save, and the page offers to rerun.
 
 | Page | File | What it does |
 |---|---|---|
-| Redlining peer analysis | `pages/1_Redlining_analysis.py` (logic in `redlining.py`) | Opens on lenders ranked by number of risk areas, with p-values. Click a lender, or type a name in the search box, to open its profile with results for each MSA. Sidebar: tract type (MMCT / MBCT / MHCT / MBHCT), Mortgage / HELOC / both combined, depository institutions only, significance level |
-| Data explorer | `pages/2_Data_explorer.py` | Denial rates by group, denial reasons, free-form SQL |
+| Lender analysis (first tab) | `app_pages/0_Lender_analysis.py` (logic in `redlining.py`, `disparity.py`) | Pick a lender: its MSA risk areas (redlining test, with any significant denial disparities per MSA), then, for one MSA, its peers. A peer picker (any peer, the median peer or pooled peers) charts the lender's product and loan-type mix against it. Peer tables show the lender, a hypothetical **median peer** (median of each figure across the peers), pooled peers and every peer. Denial rates, adverse impact ratio (AIR) and significance for American Indian, Black, Pacific Islander, Hispanic, Female and Senior applicants vs. their comparison groups |
+| MSA analysis | `app_pages/1_MSA_analysis.py` (logic in `redlining.py`, `disparity.py`) | Pick a state, then an MSA. With only a state picked: its MSAs with applications, the share from the chosen tract type, lenders tested, risk areas and lenders with a denial disparity (click an MSA to open it). With an MSA picked: every tested lender there with its redlining peer-test result (vs. pooled peers and the median peer) and its significant denial disparities. Click a lender to open it in Lender analysis with that MSA. Lenders under 100 applications are listed separately, untested |
+| Data explorer | `app_pages/2_Data_explorer.py` | Denial rates by group, denial reasons (from the precomputed `explorer_*` tables), free-form SQL |
+
+The two analysis pages share the sidebar settings (`ui.py`): tract type (MMCT / MBCT / MHCT / MBHCT), product (Mortgage / HELOC / both combined, the default), loan type (Conventional / FHA / VA / USDA, any combination; all by default), depository institutions only, significance level. The loan-type filter applies everywhere: peer groups, redlining tests and denial rates. They stay put when you switch pages.
 
 `app.py` only lists the pages for the sidebar. `db.py` has the shared database connection.
+
+**Speed.** The analysis pages read the precomputed table `lender_msa_counts` (one row per lender × MSA × product, built by `counts.py`)
+instead of aggregating 1.2M records each time. The loaders rebuild it after every load, and the app rebuilds it (about 15 seconds)
+if it is missing or if the definitions in `counts.py`, `redlining.py` or `disparity.py` change.
+After editing `db/views.sql` or `db/census_views.sql` by hand, run `python scripts/build_counts.py`.
 
 Redlining test rules (constants at the top of `redlining.py`):
 
@@ -138,7 +200,9 @@ Tables:
 | Name | What it is |
 |---|---|
 | `hmda_lar` | Every CSV column exactly as published, stored as text |
-| `hmda_clean` | View with numeric columns, readable labels for codes, and `is_decision` / `is_denied` flags |
+| `hmda_clean` | View with numeric columns, readable labels for codes, and `is_decision` / `is_denied` flags, and `age_group` (Senior / Under 62) |
+| `lender_msa_counts` | Precomputed counts per lender, MSA and product: applications by tract type, and decisions / denials by applicant group |
+| `msa_states`, `explorer_totals`, `explorer_groups`, `explorer_reasons` | Precomputed: which states each MSA is in, and the Data explorer's summaries for every year × state × loan purpose (plus "All") |
 
 Example: denial rates by race.
 
@@ -153,10 +217,64 @@ ORDER BY 3 DESC;
 
 To add columns to the view, edit `db/views.sql`. The loader re-applies it each time it runs, or you can apply it yourself with `psql "$DATABASE_URL" -f db/views.sql`.
 
-## Starting over
+## Hosting on Google Cloud (Cloud Run)
 
-The database lives in a Docker volume, so it survives restarts and rebuilds. To wipe it, run this from WSL in the project folder:
+The hosted copy runs on [Cloud Run](https://cloud.google.com/run) with **no database server**. Everything it shows
+comes from one read-only data file, `build/hmda.duckdb`, built on your computer from your local PostgreSQL by
+`scripts/export_duckdb.py` (about 80 seconds, 140 MB). Nothing is computed on the server.
+
+| | Local | Hosted |
+|---|---|---|
+| Data | PostgreSQL (`DATABASE_URL`) | `build/hmda.duckdb`, baked into the image (`FAIR_LENDING_DUCKDB`) |
+| Precomputed tables | Built on first use, or when their definition changes | Built locally; the app says so if the file is older than the code |
+| Free-form SQL | PostgreSQL, as the database owner | [DuckDB](https://duckdb.org/), read-only queries only, 60-second limit, 10,000 rows shown |
+
+The data file holds the precomputed tables for every page (`lender_msa_counts`, `msa_states`,
+`explorer_totals` / `explorer_groups` / `explorer_reasons`), plus the full records for the SQL box: `hmda_lar`,
+`hmda_clean`, `ffiec_census_tract`, `hmda_respondents`, `msa_md_names` and the `hmda_with_census` view.
+
+**Free-form SQL when hosted** runs as DuckDB SQL, which is close to PostgreSQL. Only single read-only statements run
+(`SELECT`, `WITH`, `EXPLAIN`, `DESCRIBE`, `SHOW`); DuckDB has file, network and extension access switched off and its
+settings locked, so a query can't read server files, reach the internet or change anything.
+Use `DESCRIBE hmda_lar` to list a table's columns.
+
+**Password.** The site is open to the internet, and the app asks for one shared password before showing anything
+(`auth.py`). Only a PBKDF2 hash of it is stored, in Secret Manager (`fair-lending-password-hash`). If that secret is
+missing, the hosted app shows nothing at all. Signing in lasts for the browser tab: reloading the page asks again.
+Locally there is no password.
+
+**Deploy** from **Git Bash** in the project folder, with the [gcloud CLI](https://cloud.google.com/sdk/docs/install)
+signed in (`gcloud auth login`, then `gcloud config set project <project-id>`):
 
 ```bash
-docker compose -f .devcontainer/docker-compose.yaml down -v
+bash deploy/set_password.sh        # once, and whenever you change it: prompts, stores only the hash
+bash deploy/cloudrun.sh --export   # rebuild the data file from local PostgreSQL, then deploy
+bash deploy/cloudrun.sh            # later: deploy code changes with the existing data file
+```
+
+`cloudrun.sh` builds the image with Cloud Build (uploading the code and the data file, not `data/`), stores it in
+Artifact Registry and deploys service `fair-lending` in `us-west1`, running as its own service account whose only
+permission is reading the password secret. At most 3 instances run, which caps the cost.
+
+**Address: https://ecarleton.com/redlining.** The app runs with Streamlit's base path set to `/redlining`, and a free
+Cloudflare Worker (`deploy/cloudflare-worker.js`) forwards `ecarleton.com/redlining*` to the Cloud Run service;
+Cloudflare provides HTTPS, and the rest of ecarleton.com is untouched. Set up once in the Cloudflare dashboard:
+
+1. **Workers & Pages → Create → Worker**, name it `fair-lending-redlining`, paste `deploy/cloudflare-worker.js`, **Deploy**.
+2. In the Worker: **Settings → Domains & Routes → Add → Route**: `ecarleton.com/redlining*`, zone `ecarleton.com`.
+3. **DNS → Records**: if `ecarleton.com` has no proxied record yet, add `AAAA` `@` `100::` with **Proxied** on
+   (a placeholder Cloudflare uses for Worker-only names). Leave the Proton Mail TXT record as it is.
+
+The Cloud Run address also works directly: `https://fair-lending-542044103226.us-west1.run.app/redlining/`.
+
+Files: `auth.py`, `deploy/Dockerfile.cloudrun`, `deploy/cloudbuild.yaml`, `deploy/cloudrun.sh`, `deploy/set_password.sh`,
+`deploy/cloudflare-worker.js`, `scripts/hash_password.py`, `.gcloudignore`.
+
+## Starting over
+
+The database lives in the Docker volume `fair-lending_devcontainer_pgdata` (its name predates the shared setup),
+so it survives restarts and rebuilds. To wipe it, run this from WSL in the project folder:
+
+```bash
+docker compose down -v
 ```

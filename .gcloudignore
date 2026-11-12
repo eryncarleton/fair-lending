@@ -1,0 +1,13 @@
+# What deploy/cloudrun.sh does NOT upload to Cloud Build. The upload is the code plus
+# build/hmda.duckdb; the raw downloads in data/ (several GB) stay on your computer.
+.git/
+.gitignore
+.gcloudignore
+.devcontainer/
+.venv/
+data/
+db/
+scripts/
+build/*.tmp
+**/__pycache__/
+*.pyc

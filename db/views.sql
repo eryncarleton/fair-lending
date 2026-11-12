@@ -35,8 +35,15 @@ SELECT
 
     derived_race,
     derived_ethnicity,
-    derived_sex,
+    derived_sex,                            -- 'Female' = one female applicant, or two
     applicant_age,
+    -- Senior = applicant 62+ and the co-applicant 62+ too (or no co-applicant); mixed pairs -> NULL
+    CASE
+        WHEN applicant_age_above_62 = 'Yes'
+             AND (co_applicant_age_above_62 = 'Yes' OR co_applicant_age = '9999') THEN 'Senior'
+        WHEN applicant_age_above_62 = 'No'
+             AND (co_applicant_age_above_62 = 'No' OR co_applicant_age = '9999') THEN 'Under 62'
+    END                                     AS age_group,
 
     action_taken,
     CASE action_taken

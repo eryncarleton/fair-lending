@@ -26,6 +26,8 @@ from pathlib import Path
 import psycopg
 from psycopg import sql
 
+from build_counts import rebuild as rebuild_counts
+
 VIEWS_SQL = Path(__file__).resolve().parent.parent / "db" / "views.sql"
 CENSUS_VIEWS_SQL = VIEWS_SQL.with_name("census_views.sql")
 
@@ -74,7 +76,7 @@ def main() -> None:
     if missing:
         sys.exit(f"File(s) not found: {', '.join(missing)}")
 
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+    with psycopg.connect(os.environ.get("DATABASE_URL", "postgresql://hmda:hmda@localhost:5432/hmda")) as conn:
         if args.replace:
             conn.execute(sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(sql.Identifier(args.table)))
         for path in args.files:
@@ -90,6 +92,7 @@ def main() -> None:
                 print("Creating census views ...")
                 conn.execute(CENSUS_VIEWS_SQL.read_text())
             conn.commit()
+            rebuild_counts(conn)
         total = conn.execute(
             sql.SQL("SELECT count(*) FROM {}").format(sql.Identifier(args.table))
         ).fetchone()[0]
