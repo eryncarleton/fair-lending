@@ -347,8 +347,8 @@ denial rates. For a group, only peers with at least {dp.MIN_DECISIONS} decisions
 
 **Applicant groups** (HMDA derived fields). Each is compared with the group in brackets:
 
-- **American Indian** (American Indian or Alaska Native), **Black**, **Pacific Islander** (Native Hawaiian or
-  Other Pacific Islander): HMDA derived race, any ethnicity [non-Hispanic White].
+- **American Indian** (American Indian or Alaska Native), **Asian**, **Black**, **Pacific Islander** (Native
+  Hawaiian or Other Pacific Islander): HMDA derived race, any ethnicity [non-Hispanic White].
 - **Hispanic**: derived ethnicity Hispanic or Latino, any race [non-Hispanic White].
 - **Female**: a female applicant with no co-applicant, or two female applicants [the same for male].
 - **Senior**: applicant aged 62 or over, and the co-applicant too if there is one [both under 62].

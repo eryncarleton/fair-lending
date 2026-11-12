@@ -34,6 +34,7 @@ CONTROLS = {
 # code -> (label, SQL condition, comparison group code)
 GROUPS = {
     "aian": ("American Indian", "h.derived_race = 'American Indian or Alaska Native'", "nhw"),
+    "asian": ("Asian", "h.derived_race = 'Asian'", "nhw"),
     "black": ("Black", "h.derived_race = 'Black or African American'", "nhw"),
     "nhpi": ("Pacific Islander", "h.derived_race = 'Native Hawaiian or Other Pacific Islander'", "nhw"),
     "hisp": ("Hispanic", "h.derived_ethnicity = 'Hispanic or Latino'", "nhw"),
