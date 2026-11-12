@@ -16,6 +16,9 @@ REGION="${REGION:-us-west1}"
 REPO="${REPO:-fair-lending}"
 SECRET="fair-lending-password-hash"
 BASE_PATH="${BASE_PATH:-redlining}"   # served at https://ecarleton.com/redlining via deploy/cloudflare-worker.js
+# Streamlit refuses live (WebSocket) connections from pages served at another address unless that
+# address is listed here: the public site is ecarleton.com, the service itself is *.run.app.
+PUBLIC_ORIGIN="${PUBLIC_ORIGIN:-https://ecarleton.com}"
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PROJECT="$(gcloud config get-value project 2>/dev/null)"
@@ -76,7 +79,7 @@ gcloud builds submit --config deploy/cloudbuild.yaml --substitutions "_IMAGE=$IM
 gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" \
     --service-account "$SA" \
     --set-secrets "FAIR_LENDING_PASSWORD_HASH=$SECRET:latest" \
-    --set-env-vars "STREAMLIT_SERVER_BASE_URL_PATH=$BASE_PATH" \
+    --set-env-vars "STREAMLIT_SERVER_BASE_URL_PATH=$BASE_PATH,STREAMLIT_SERVER_CORS_ALLOWED_ORIGINS=$PUBLIC_ORIGIN" \
     --memory 2Gi --cpu 1 --concurrency 20 --cpu-boost \
     --min-instances 0 --max-instances 3 \
     --session-affinity --timeout 3600 \
