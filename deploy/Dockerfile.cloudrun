@@ -13,9 +13,7 @@ COPY *.py ./
 COPY app_pages ./app_pages
 COPY build/hmda.duckdb /data/hmda.duckdb
 
-# FAIR_LENDING_REQUIRE_PASSWORD: show nothing if the password hash (a Secret Manager secret) is missing.
 ENV FAIR_LENDING_DUCKDB=/data/hmda.duckdb \
-    FAIR_LENDING_REQUIRE_PASSWORD=1 \
     STREAMLIT_SERVER_HEADLESS=true \
     STREAMLIT_SERVER_FILE_WATCHER_TYPE=none \
     STREAMLIT_CLIENT_TOOLBAR_MODE=viewer \

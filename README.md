@@ -238,23 +238,20 @@ The data file holds the precomputed tables for every page (`lender_msa_counts`, 
 settings locked, so a query can't read server files, reach the internet or change anything.
 Use `DESCRIBE hmda_lar` to list a table's columns.
 
-**Password.** The site is open to the internet, and the app asks for one shared password before showing anything
-(`auth.py`). Only a PBKDF2 hash of it is stored, in Secret Manager (`fair-lending-password-hash`). If that secret is
-missing, the hosted app shows nothing at all. Signing in lasts for the browser tab: reloading the page asks again.
-Locally there is no password.
+**Public.** Anyone can open the site; there is no sign-in. Nothing on it can change data, and at most 3 instances
+run, which caps the cost.
 
 **Deploy** from **Git Bash** in the project folder, with the [gcloud CLI](https://cloud.google.com/sdk/docs/install)
 signed in (`gcloud auth login`, then `gcloud config set project <project-id>`):
 
 ```bash
-bash deploy/set_password.sh        # once, and whenever you change it: prompts, stores only the hash
 bash deploy/cloudrun.sh --export   # rebuild the data file from local PostgreSQL, then deploy
 bash deploy/cloudrun.sh            # later: deploy code changes with the existing data file
 ```
 
 `cloudrun.sh` builds the image with Cloud Build (uploading the code and the data file, not `data/`), stores it in
-Artifact Registry and deploys service `fair-lending` in `us-west1`, running as its own service account whose only
-permission is reading the password secret. At most 3 instances run, which caps the cost.
+Artifact Registry and deploys service `fair-lending` in `us-west1`, running as its own service account, which has
+no permissions.
 
 **Address: https://ecarleton.com/redlining.** The app runs with Streamlit's base path set to `/redlining`, and a free
 Cloudflare Worker (`deploy/cloudflare-worker.js`) forwards `ecarleton.com/redlining*` to the Cloud Run service;
@@ -267,8 +264,8 @@ Cloudflare provides HTTPS, and the rest of ecarleton.com is untouched. Set up on
 
 The Cloud Run address also works directly: `https://fair-lending-542044103226.us-west1.run.app/redlining/`.
 
-Files: `auth.py`, `deploy/Dockerfile.cloudrun`, `deploy/cloudbuild.yaml`, `deploy/cloudrun.sh`, `deploy/set_password.sh`,
-`deploy/cloudflare-worker.js`, `scripts/hash_password.py`, `.gcloudignore`.
+Files: `deploy/Dockerfile.cloudrun`, `deploy/cloudbuild.yaml`, `deploy/cloudrun.sh`, `deploy/cloudflare-worker.js`,
+`.gcloudignore`.
 
 ## Starting over
 
