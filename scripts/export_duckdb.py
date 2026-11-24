@@ -33,6 +33,8 @@ CHUNK = 50_000
 # PostgreSQL's helper functions). hmda_with_census is recreated as a view on top.
 SOURCES = ["hmda_lar", "hmda_clean", "ffiec_census_tract", "hmda_respondents", "msa_md_names",
            *counts.PRECOMPUTED]
+# Copied when loaded (scripts/load_tracts.py); without them the lender page has no maps.
+OPTIONAL = ["tract_shapes"]
 VIEWS = ["hmda_with_census"]
 
 PG_TO_ARROW = {
@@ -96,7 +98,10 @@ def main() -> None:
             rebuild(pg)
 
         duck = duckdb.connect(str(tmp))
-        for name in SOURCES:
+        optional = [n for n in OPTIONAL if pg.execute("SELECT to_regclass(%s) IS NOT NULL", (n,)).fetchone()[0]]
+        for name in sorted(set(OPTIONAL) - set(optional)):
+            print(f"  {name:<20} not loaded: skipped (no maps on the hosted site)")
+        for name in SOURCES + optional:
             t = time.time()
             n = copy_table(pg, duck, name)
             print(f"  {name:<20} {n:>10,} rows  {time.time() - t:5.1f}s", flush=True)

@@ -140,6 +140,19 @@ To name more columns, download the data dictionary from the same FFIEC page and 
 
 Every HMDA record with a census tract matches a census row. The 13,824 records without tract data have no tract in HMDA (`NA`).
 
+### Census tract boundaries (for the maps)
+
+```bash
+python scripts/load_tracts.py   # downloads the 2025 TIGER/Line California tract shapefile (33 MB) to data/tiger/ if needed
+```
+
+| Name | What it is |
+|---|---|
+| `tract_shapes` | 9,129 California tracts: land and water area, `water_pct`, and the boundary as GeoJSON, simplified to about 30 m |
+
+Every FFIEC tract in an MSA has a boundary (the 11 without one are FFIEC's county-wide `…999999` rows outside any MSA).
+Without this table the app still works; the lender page just has no map.
+
 ## Run the app
 
 ```bash
@@ -150,7 +163,7 @@ streamlit run app.py
 
 | Page | File | What it does |
 |---|---|---|
-| Lender analysis (first tab) | `app_pages/0_Lender_analysis.py` (logic in `redlining.py`, `disparity.py`) | Pick a lender: its MSA risk areas (redlining test, with any significant denial disparities per MSA), then, for one MSA, its peers. A peer picker (any peer, the median peer or pooled peers) charts the lender's product and loan-type mix against it. Peer tables show the lender, a hypothetical **median peer** (median of each figure across the peers), pooled peers and every peer. Denial rates, adverse impact ratio (AIR) and significance for American Indian, Black, Pacific Islander, Hispanic, Female and Senior applicants vs. their comparison groups |
+| Lender analysis (first tab) | `app_pages/0_Lender_analysis.py` (logic in `redlining.py`, `disparity.py`) | Pick a lender: its MSA risk areas (redlining test, with any significant denial disparities per MSA), then, for one MSA, a map and its peers. The map (`tractmap.py`) shades the MSA's tracts of the chosen type by the lender's applications there: pink for none, then very pale green (1–4), pale green (5–9) and green (10+), over a CARTO Voyager street basemap (no account or API key). A peer picker (any peer, the median peer or pooled peers) charts the lender's product and loan-type mix against it. Peer tables show the lender, a hypothetical **median peer** (median of each figure across the peers), pooled peers and every peer. Denial rates, adverse impact ratio (AIR) and significance for American Indian, Black, Pacific Islander, Hispanic, Female and Senior applicants vs. their comparison groups |
 | MSA analysis | `app_pages/1_MSA_analysis.py` (logic in `redlining.py`, `disparity.py`) | Pick a state, then an MSA. With only a state picked: its MSAs with applications, the share from the chosen tract type, lenders tested, risk areas and lenders with a denial disparity (click an MSA to open it). With an MSA picked: every tested lender there with its redlining peer-test result (vs. pooled peers and the median peer) and its significant denial disparities. Click a lender to open it in Lender analysis with that MSA. Lenders under 100 applications are listed separately, untested |
 | Data explorer | `app_pages/2_Data_explorer.py` | Denial rates by group, denial reasons (from the precomputed `explorer_*` tables), free-form SQL |
 
@@ -238,23 +251,20 @@ The data file holds the precomputed tables for every page (`lender_msa_counts`, 
 settings locked, so a query can't read server files, reach the internet or change anything.
 Use `DESCRIBE hmda_lar` to list a table's columns.
 
-**Password.** The site is open to the internet, and the app asks for one shared password before showing anything
-(`auth.py`). Only a PBKDF2 hash of it is stored, in Secret Manager (`fair-lending-password-hash`). If that secret is
-missing, the hosted app shows nothing at all. Signing in lasts for the browser tab: reloading the page asks again.
-Locally there is no password.
+**Public.** Anyone can open the site; there is no sign-in. Nothing on it can change data, and at most 3 instances
+run, which caps the cost.
 
 **Deploy** from **Git Bash** in the project folder, with the [gcloud CLI](https://cloud.google.com/sdk/docs/install)
 signed in (`gcloud auth login`, then `gcloud config set project <project-id>`):
 
 ```bash
-bash deploy/set_password.sh        # once, and whenever you change it: prompts, stores only the hash
 bash deploy/cloudrun.sh --export   # rebuild the data file from local PostgreSQL, then deploy
 bash deploy/cloudrun.sh            # later: deploy code changes with the existing data file
 ```
 
 `cloudrun.sh` builds the image with Cloud Build (uploading the code and the data file, not `data/`), stores it in
-Artifact Registry and deploys service `fair-lending` in `us-west1`, running as its own service account whose only
-permission is reading the password secret. At most 3 instances run, which caps the cost.
+Artifact Registry and deploys service `fair-lending` in `us-west1`, running as its own service account, which has
+no permissions.
 
 **Address: https://ecarleton.com/redlining.** The app runs with Streamlit's base path set to `/redlining`, and a free
 Cloudflare Worker (`deploy/cloudflare-worker.js`) forwards `ecarleton.com/redlining*` to the Cloud Run service;
@@ -267,8 +277,8 @@ Cloudflare provides HTTPS, and the rest of ecarleton.com is untouched. Set up on
 
 The Cloud Run address also works directly: `https://fair-lending-542044103226.us-west1.run.app/redlining/`.
 
-Files: `auth.py`, `deploy/Dockerfile.cloudrun`, `deploy/cloudbuild.yaml`, `deploy/cloudrun.sh`, `deploy/set_password.sh`,
-`deploy/cloudflare-worker.js`, `scripts/hash_password.py`, `.gcloudignore`.
+Files: `deploy/Dockerfile.cloudrun`, `deploy/cloudbuild.yaml`, `deploy/cloudrun.sh`, `deploy/cloudflare-worker.js`,
+`.gcloudignore`.
 
 ## Starting over
 

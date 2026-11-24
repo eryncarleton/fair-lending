@@ -10,6 +10,7 @@ server: DuckDB runs inside the app, with file and network access switched off.
 """
 
 import os
+import re
 import threading
 
 import pandas as pd
@@ -88,6 +89,46 @@ def table(name: str) -> pd.DataFrame:
 
     _ensure_built()
     return query(f"SELECT * FROM {name}")
+
+
+def _query(sql: str, **params) -> pd.DataFrame:
+    """A read with :name parameters, on whichever database is in use."""
+    if HOSTED:
+        _hosted_check()
+        return _duck().cursor().execute(re.sub(r":(\w+)", r"$\1", sql), params).df()
+    from db import query
+
+    _ensure_built()
+    return query(sql, **params)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def has_tract_shapes() -> bool:
+    if HOSTED:
+        return not _duck_df("SELECT 1 FROM information_schema.tables WHERE table_name = 'tract_shapes'").empty
+    from db import query
+
+    return bool(query("SELECT to_regclass('tract_shapes') IS NOT NULL AS ok")["ok"].iloc[0])
+
+
+@st.cache_data(ttl=600, show_spinner="Loading the map…")
+def msa_tracts(msa_md: str) -> pd.DataFrame:
+    """Every tract in an MSA: population shares by group, water share and boundary (GeoJSON text)."""
+    return _query("""
+        SELECT c.census_tract, c.tract_population, c.tract_minority_pct, c.tract_black_pct,
+               c.tract_hispanic_pct, c.tract_black_hispanic_pct, s.water_pct, s.geojson
+        FROM ffiec_census_tract c
+        JOIN tract_shapes s USING (census_tract)
+        WHERE c.msa_md = :msa""", msa=msa_md)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def lender_tract_apps(lei: str, msa_md: str) -> pd.DataFrame:
+    """One lender's applications per tract in an MSA, by product and loan type (counts.TRACT_TABLE)."""
+    return _query(f"""
+        SELECT census_tract, product, loan_type, apps
+        FROM {counts.TRACT_TABLE}
+        WHERE lei = :lei AND msa_md = :msa""", lei=lei, msa=msa_md)
 
 
 def has_data() -> bool:

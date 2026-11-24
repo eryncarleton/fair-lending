@@ -1,7 +1,7 @@
 """Precomputed table `lender_msa_counts`: one row per lender x MSA x product x loan type.
 
-Every number the Streamlit pages need comes from this table (plus msa_states and the explorer_*
-summary tables below), so they load in well under a second
+Every number the Streamlit pages need comes from this table (plus lender_tract_counts for the maps,
+msa_states and the explorer_* summary tables below), so they load in well under a second
 instead of re-aggregating ~1.2M HMDA records through three views each time.
 
 Columns:
@@ -63,6 +63,25 @@ def _select_sql() -> str:
     """
 
 
+# Applications per lender x census tract, for the lender maps: the same applications as `apps` in
+# lender_msa_counts (with tract data), split by tract. Narrowed to one lender and MSA when read.
+TRACT_TABLE = "lender_tract_counts"
+TRACT_SQL = f"""
+    SELECT h.lei,
+           h.msa_md,
+           h.census_tract,
+           h.product,
+           coalesce(h.loan_type, 'Unknown')      AS loan_type,
+           count(*)                                AS apps
+    FROM hmda_with_census h
+    WHERE h.action_taken <> '6'
+      AND h.msa_md <> '99999'
+      AND h.product IS NOT NULL
+      AND {TRACT_OK}
+    GROUP BY 1, 2, 3, 4, 5
+"""
+
+
 # Which states each MSA has applications in (an MSA can cross state lines, so it is listed under
 # every state it has records in, not just its principal state). Used by the MSA analysis page.
 STATES_TABLE = "msa_states"
@@ -107,11 +126,11 @@ EXPLORER_SQL = {
 }
 
 # Every precomputed table, in the order the hosted export copies them.
-PRECOMPUTED = [TABLE, STATES_TABLE, *EXPLORER_SQL]
+PRECOMPUTED = [TABLE, TRACT_TABLE, STATES_TABLE, *EXPLORER_SQL]
 
 
 def version() -> str:
-    defs = _select_sql() + STATES_SQL + "".join(EXPLORER_SQL.values())
+    defs = _select_sql() + TRACT_SQL + STATES_SQL + "".join(EXPLORER_SQL.values())
     return "v:" + hashlib.sha1(defs.encode()).hexdigest()[:12]
 
 
@@ -121,6 +140,9 @@ def statements() -> list[str]:
         f"CREATE TABLE {TABLE} AS {_select_sql()}",
         f"CREATE INDEX ON {TABLE} (msa_md, product)",
         f"CREATE INDEX ON {TABLE} (lei)",
+        f"DROP TABLE IF EXISTS {TRACT_TABLE}",
+        f"CREATE TABLE {TRACT_TABLE} AS {TRACT_SQL}",
+        f"CREATE INDEX ON {TRACT_TABLE} (lei, msa_md)",
         f"DROP TABLE IF EXISTS {STATES_TABLE}",
         f"CREATE TABLE {STATES_TABLE} AS {STATES_SQL}",
     ]
