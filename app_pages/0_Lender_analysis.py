@@ -141,11 +141,11 @@ if not data.has_tract_shapes():
 else:
     tracts = tm.classify(data.msa_tracts(msa), data.lender_tract_apps(lei, msa),
                          s.tract_type, s.product, s.loan_types)
-    in_type = tracts[tracts["in_type"] & (tracts["category"] != "water")]
+    in_type = tracts[tracts["in_type"]]
     st.caption(
         f"{s.tt_label} tracts ({s.tract_type}) shaded by how many of the lender's {rl.PRODUCT_PHRASE[s.product]} "
         f"applications came from each: {int((in_type['apps'] == 0).sum()):,} of {len(in_type):,} had none. "
-        f"Tracts at least {tm.WATER_PCT}% water are blue. Hover over a tract for its figures."
+        "Hover over a tract for its figures."
     )
     st.pydeck_chart(tm.deck(tracts, s.tract_type), height=560)
     st.html(tm.legend_html(tracts, s.tract_type))

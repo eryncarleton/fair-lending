@@ -1,11 +1,11 @@
 """Map of one lender's applications across the tracts of one MSA (Lender analysis page).
 
 Each tract of the chosen type (e.g. majority-minority) is shaded by how many applications the lender
-took there: pink for none, then three shades of green. Tracts that are at least 90% water are blue,
-whatever their type. Other tracts are outlined only.
+took there: pink for none, then three shades of green. Other tracts are outlined only.
 
 Boundaries: Census TIGER/Line tracts (scripts/load_tracts.py). Applications: the same ones the
 redlining test counts (counts.TRACT_TABLE), for the product and loan types in the sidebar.
+Basemap: CARTO Voyager (roads, highways and place names), which needs no account or API key.
 """
 
 import json
@@ -16,7 +16,8 @@ import pydeck as pdk
 
 import redlining as rl
 
-WATER_PCT = 90  # a tract this much water (by area) or more is drawn as water
+# Free vector basemap with road and highway detail; no account or API key
+BASEMAP = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json"
 
 # key -> (legend label, RGBA fill)
 CATEGORIES = {
@@ -24,7 +25,6 @@ CATEGORIES = {
     "low": ("1–4 applications", [220, 252, 231, 220]),
     "mid": ("5–9 applications", [134, 239, 172, 220]),
     "high": ("10 or more applications", [22, 163, 74, 220]),
-    "water": (f"At least {WATER_PCT}% water", [96, 165, 250, 200]),
     "other": ("Other tracts", [0, 0, 0, 0]),
 }
 OUTLINE = [100, 116, 139, 150]
@@ -63,7 +63,6 @@ def classify(tracts: pd.DataFrame, apps: pd.DataFrame, tract_type: str, product:
     out["pct"] = out[pct_col]
     out["in_type"] = out["pct"] >= rl.THRESHOLD
     out["category"] = out["apps"].map(app_bin).where(out["in_type"], "other")
-    out.loc[out["water_pct"] >= WATER_PCT, "category"] = "water"
     return out
 
 
@@ -112,7 +111,6 @@ def deck(tracts: pd.DataFrame, tract_type: str) -> pdk.Deck:
                 "label": label,
                 "share": f"{share_label}: {t.pct:.0f}%" if pd.notna(t.pct) else f"{share_label}: no residents",
                 "apps": f"{t.apps:,}",
-                "water": f"{t.water_pct:.0f}%" if pd.notna(t.water_pct) else "–",
                 "fill": CATEGORIES[t.category][1],
             },
         })
@@ -132,10 +130,9 @@ def deck(tracts: pd.DataFrame, tract_type: str) -> pdk.Deck:
     return _CompactDeck(
         layers=[layer],
         initial_view_state=_view(geoms),
-        map_style=None,  # Streamlit's default basemap, light or dark to match the app
+        map_style=BASEMAP,
         tooltip={
-            "html": "<b>Tract {tract}</b><br/>{label}<br/>{share}<br/>Lender applications: {apps}"
-                    "<br/>Water: {water} of area",
+            "html": "<b>Tract {tract}</b><br/>{label}<br/>{share}<br/>Lender applications: {apps}",
             "style": {"fontSize": "12px"},
         },
     )
